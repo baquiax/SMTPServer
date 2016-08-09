@@ -1,23 +1,25 @@
 package edu.galileo.baquiax.smtp;
 import java.net.Socket;
+import java.util.ArrayList;
 
 public class SMTPConnection implements Runnable {
     private Socket client;
-
+    private ArrayList<String> commandHistory;
     public SMTPConnection(Socket c) {
         this.client = c;
+        this.commandHistory = new ArrayList<String>();
     }
 
     public String readFromClent() {
         String result = "";
         try {
-            int lenght = 0;
+            int length = 0;
             while (true) {
-                lenght = this.client.getInputStream().available();
-                if (lenght > 0) break;
+                length = this.client.getInputStream().available();
+                if (length > 0) break;
             }
-            byte[] data = new byte[lenght];
-            this.client.getInputStream().read(data, 0, lenght);
+            byte[] data = new byte[length];
+            this.client.getInputStream().read(data, 0, length);
             result = new String(data);            
         } catch(Exception e) {
             e.printStackTrace();
@@ -32,10 +34,52 @@ public class SMTPConnection implements Runnable {
     @Override
     public void run() {
         try {
-            this.client.getOutputStream().write(this.getDefaultBanner().getBytes());
-            while(true) {                
-                this.print(this.readFromClent());
+            this.sendToClient(this.getDefaultBanner());
+            String tmpCommand = "";
+            while(true) {                 
+                String command = this.readFromClent();
+                this.print(command);
+                if (command.equals("\r\n")) {
+                    this.processCommand(tmpCommand);                    
+                }
+                tmpCommand += command; 
             }            
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void processCommand(String command) {
+        String[] commandChunks = command.split("[ ]+");
+        if (commandChunks.length == 0) return;
+
+        switch (commandChunks[0].toLowerCase()) {
+            case "HELLO":
+                if (commandChunks.length == 2 && commandHistory.size() == 0) {
+                    this.sendToClient("200 Hello, please to meet you");                    
+                } else {
+                    this.sendToClient("400 Invalid HELLO command.");                
+                }
+                break;
+            case "MAIL":
+                if (commandChunks.length == 3 && commandChunks[1].equals("FROM")) {
+
+                } else {
+
+                }
+                break;
+            default:
+
+        }
+
+        for (int i = 0; i < commandChunks.length; i++) {
+            this.commandHistory.add(commandChunks[i]);
+        }
+    }
+
+    public void sendToClient(String msg) {
+        try {
+            this.client.getOutputStream().write(msg.getBytes());
         } catch (Exception e) {
             e.printStackTrace();
         }
