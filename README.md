@@ -1,0 +1,2 @@
+# SMTPServer
+Simple SMTP protocol.
