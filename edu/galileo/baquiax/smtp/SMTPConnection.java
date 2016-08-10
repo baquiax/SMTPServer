@@ -1,6 +1,8 @@
 package edu.galileo.baquiax.smtp;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.UUID;
+import java.io.PrintWriter;
 
 public class SMTPConnection implements Runnable {
     private Socket client;
@@ -34,47 +36,88 @@ public class SMTPConnection implements Runnable {
     @Override
     public void run() {
         try {
-            this.sendToClient(this.getDefaultBanner());
-            String tmpCommand = "";
+            this.sendToClient(this.getDefaultBanner());            
             while(true) {                 
                 String command = this.readFromClent();
                 this.print(command);
-                if (command.equals("\r\n")) {
-                    this.processCommand(tmpCommand);                    
-                }
-                tmpCommand += command; 
+                this.processCommand(command);                
             }            
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void processCommand(String command) {
-        String[] commandChunks = command.split("[ ]+");
-        if (commandChunks.length == 0) return;
+    public void processCommand(String command) {        
+        String[] commandChunks = command.split("[ ]+");        
+        print("Command: " + command + " (" + command.length() + ")-("+ commandChunks.length + ")" );
 
-        switch (commandChunks[0].toLowerCase()) {
+        if (commandChunks.length == 0) return;        
+        switch (commandChunks[0].toUpperCase()) {
+            case "QUIT\r\n":
+                this.sendToClient("200 Bye\r\n");
+                try {
+                    this.client.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                return;
             case "HELLO":
                 if (commandChunks.length == 2 && commandHistory.size() == 0) {
-                    this.sendToClient("200 Hello, please to meet you");                    
+                    this.sendToClient("200 Hello, please to meet you\r\n");
                 } else {
-                    this.sendToClient("400 Invalid HELLO command.");                
+                    this.sendToClient("400 Invalid HELLO command.\r\n");
+                    return;
                 }
                 break;
             case "MAIL":
-                if (commandChunks.length == 3 && commandChunks[1].equals("FROM")) {
-
+                if (commandChunks.length == 3 && commandChunks[1].toUpperCase().equals("FROM") && commandHistory.size() == 1) {
+                    this.sendToClient("200 OK\r\n");
                 } else {
-
+                    this.sendToClient("400 Invalid MAIL command.\r\n");
+                    return;
+                }
+                break;
+            case "RCPT":
+                if (commandChunks.length == 3 && commandChunks[1].toUpperCase().equals("TO") && commandHistory.size() == 2) {
+                    this.sendToClient("200 OK\r\n");
+                } else {
+                    this.sendToClient("400 Invalid RCPT command.\r\n");
+                    return;
                 }
                 break;
             default:
+                if (this.commandHistory.size() == 3) {
+                    //Message data
+                    String currentMessage = this.commandHistory.get(2);
+                    if (currentMessage == null) {
+                        currentMessage = "";
+                    }
+                    currentMessage += command;
+                    this.commandHistory.set(2,currentMessage);
+                    if (currentMessage.endsWith("\r\n\r\n")) {
+                        //End of Message
+                        String uniqueID = UUID.randomUUID().toString();
+                        this.commandHistory.add("\r\n\r\n");
+                        this.saveMail(uniqueID);
+                        this.sendToClient("250 Ok: queued as " + uniqueID + ".\r\n");
+                    }                    
+                } else {
+                    this.sendToClient("400 Invalid command.\r\n");
+                }
+                return;
 
-        }
+        }        
+        this.commandHistory.add(command);        
+    }
 
-        for (int i = 0; i < commandChunks.length; i++) {
-            this.commandHistory.add(commandChunks[i]);
-        }
+    public void saveMail(String id) {
+        try {
+            PrintWriter writer = new PrintWriter(id + ".txt", "UTF-8");
+            writer.println(commandHistory.get(2));            
+            writer.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }        
     }
 
     public void sendToClient(String msg) {
