@@ -3,6 +3,8 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.io.PrintWriter;
+import java.io.BufferedReader;
+import java.io.InputStreamReader; 
 
 public class SMTPConnection implements Runnable {
     private Socket client;
@@ -36,37 +38,40 @@ public class SMTPConnection implements Runnable {
     @Override
     public void run() {
         try {
-            this.sendToClient(this.getDefaultBanner());            
-            while(true) {                 
-                String command = this.readFromClent();
+            this.sendToClient(this.getDefaultBanner());
+            BufferedReader in = new BufferedReader(new InputStreamReader(this.client.getInputStream()));
+            String command;            
+            while ((command = in.readLine()) != null) {
                 this.print(command);
-                this.processCommand(command);                
-            }            
+                if (this.processCommand(command) == -1) {
+                    break;
+                }
+            }
+            this.client.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void processCommand(String command) {        
+    public byte processCommand(String command) {        
         String[] commandChunks = command.split("[ ]+");        
         print("Command: " + command + " (" + command.length() + ")-("+ commandChunks.length + ")" );
-
-        if (commandChunks.length == 0) return;        
+                
         switch (commandChunks[0].toUpperCase()) {
-            case "QUIT\r\n":
+            case "QUIT":
                 this.sendToClient("200 Bye\r\n");
                 try {
                     this.client.close();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-                return;
+                return -1;
             case "HELLO":
                 if (commandChunks.length == 2 && commandHistory.size() == 0) {
                     this.sendToClient("200 Hello, please to meet you\r\n");
                 } else {
                     this.sendToClient("400 Invalid HELLO command.\r\n");
-                    return;
+                    return 0;
                 }
                 break;
             case "MAIL":
@@ -74,7 +79,7 @@ public class SMTPConnection implements Runnable {
                     this.sendToClient("200 OK\r\n");
                 } else {
                     this.sendToClient("400 Invalid MAIL command.\r\n");
-                    return;
+                    return 0;
                 }
                 break;
             case "RCPT":
@@ -82,18 +87,17 @@ public class SMTPConnection implements Runnable {
                     this.sendToClient("200 OK\r\n");
                 } else {
                     this.sendToClient("400 Invalid RCPT command.\r\n");
-                    return;
+                    return 0;
                 }
                 break;
             default:
                 if (this.commandHistory.size() == 3) {
+                    this.commandHistory.add(command + "\r\n");
+                } else if (this.commandHistory.size() == 4) {
                     //Message data
-                    String currentMessage = this.commandHistory.get(2);
-                    if (currentMessage == null) {
-                        currentMessage = "";
-                    }
-                    currentMessage += command;
-                    this.commandHistory.set(2,currentMessage);
+                    String currentMessage = this.commandHistory.get(3);
+                    currentMessage += command + "\r\n";
+                    this.commandHistory.set(3,currentMessage);
                     if (currentMessage.endsWith("\r\n\r\n")) {
                         //End of Message
                         String uniqueID = UUID.randomUUID().toString();
@@ -104,16 +108,17 @@ public class SMTPConnection implements Runnable {
                 } else {
                     this.sendToClient("400 Invalid command.\r\n");
                 }
-                return;
-
+                return 0;
+                     
         }        
-        this.commandHistory.add(command);        
+        this.commandHistory.add(command);
+        return 0;        
     }
 
     public void saveMail(String id) {
         try {
             PrintWriter writer = new PrintWriter(id + ".txt", "UTF-8");
-            writer.println(commandHistory.get(2));            
+            writer.println(commandHistory.get(3));
             writer.close();
         } catch (Exception e) {
             e.printStackTrace();
