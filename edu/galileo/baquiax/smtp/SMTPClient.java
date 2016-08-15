@@ -20,9 +20,23 @@ public class SMTPClient implements Runnable {
         try {
             this.socket = new Socket(getEmailDomain(this.toUser), 25);
             String response = this.sendStringToServer("HELLO baquiax.com");
+            response = this.sendStringToServer("MAIL FROM " + this.fromUser);
             this.print("RECEIVED: " + response);
             if (response.startsWith("2")) { //2xx
-                    
+                response = this.sendStringToServer("RCPT TO " + this.toUser);
+                this.print("RECEIVED: " + response);
+                if (response.startsWith("2")) { //2xx
+                    response = this.sendStringToServer("DATA");
+                    this.print("RECEIVED: " + response);
+                    if (response.startsWith("2")) { //2xx
+                        response = this.sendStringToServer(message+"\r\n.\r\n");
+                        this.print("RECEIVED: " + response);
+                        if (response.startsWith("2")) { //2xx
+                            response = this.sendStringToServer("quit");
+                            this.print("RECEIVED: " + response);
+                        }
+                    }
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -54,6 +68,7 @@ public class SMTPClient implements Runnable {
     }
 
     private String getEmailDomain(String email) {
+        email = email.trim();
         String[] split = email.split("@");
         return split[split.length - 1];
     }
